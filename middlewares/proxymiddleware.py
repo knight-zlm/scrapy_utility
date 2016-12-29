@@ -97,8 +97,8 @@ class RetryMiddleware(object):
 
     def _make_new_request(self, spider, request, retries):
         old_proxy = request.meta.get('proxy', '127.0.0.1')
-        log_model = 'status:{2} url:{0} dont use proxy {1}'
-        spider.logger.warning(log_model.format(request.url, old_proxy, request.status))
+        log_model = 'url:{0} dont use proxy {1}'
+        spider.logger.warning(log_model.format(request.url, old_proxy))
         # 删除旧的proxy 防止重复使用 不是必须的
         self.proxy.delete_proxy(old_proxy)
         retryreq = self.change_proxy(request)
