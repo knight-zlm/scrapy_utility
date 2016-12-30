@@ -95,37 +95,34 @@ class RetryMiddleware(object):
         request.headers.setdefault('User-Agent', random.choice(USER_AGENTS))
         return request
 
-    def _make_new_request(self, spider, request, retries):
-        old_proxy = request.meta.get('proxy', '127.0.0.1')
-        log_model = 'url:{0} dont use proxy {1}'
-        spider.logger.warning(log_model.format(request.url, old_proxy))
-        # 删除旧的proxy 防止重复使用 不是必须的
-        self.proxy.delete_proxy(old_proxy)
-        retryreq = self.change_proxy(request)
-        # 重要点 由于 scrapy 的去重机制 直接返回 request 会被框架过滤掉
-        # 参数dont_filter 防止过滤
-        retryreq.dont_filter = True
-        # 保存重试次数
-        retryreq.meta['retry_times'] = retries
-        return retryreq
+    def _make_retry_request(self, request, spider):
+        # 判断 重试次数
+        retries = request.meta.get('retry_times', 0) + 1
+        if retries <= self.max_retry_times:
+            old_proxy = request.meta.get('proxy', '127.0.0.1')
+            log_model = 'url:{0} dont use proxy {1}'
+            spider.logger.warning(log_model.format(request.url, old_proxy))
+            # 删除旧的proxy 防止重复使用 不是必须的
+            self.proxy.delete_proxy(old_proxy)
+            retryreq = self.change_proxy(request)
+            # 重要点 由于 scrapy 的去重机制 直接返回 request 会被框架过滤掉
+            # 参数dont_filter 防止过滤
+            retryreq.dont_filter = True
+            # 保存重试次数
+            retryreq.meta['retry_times'] = retries
+            return retryreq
 
     def process_response(self, request, response, spider):
         # 403 ip 被禁止 500 连接超时。出现这样的错误需要更换 ip 重试
         if response.status in [403, 500]:
-            # 判断 重试几次 做重试 限制
-            retries = request.meta.get('retry_times', 0) + 1
-            if retries <= self.max_retry_times:
-                return self._make_new_request(spider, request, retries)
+            return self._make_retry_request(request, spider)
         return response
 
     # 处理 请求异常 情况
     def process_exception(self, request, exception, spider):
         if isinstance(exception, self.EXCEPTIONS_TO_RETRY) \
                 and not request.meta.get('dont_retry', False):
-            # 判断 重试次数
-            retries = request.meta.get('retry_times', 0) + 1
-            if retries <= self.max_retry_times:
-                return self._make_new_request(spider, request, retries)
+            return self._make_retry_request(request, spider)
 
 
 
